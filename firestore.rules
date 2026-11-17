@@ -1,0 +1,552 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HARDENED PRIMITIVES ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdminPortal(userId) {
+      return isOwner(userId) &&
+             (!exists(/databases/$(database)/documents/users/$(userId)) ||
+              get(/databases/$(database)/documents/users/$(userId)).data.portalMode == 'ADMIN');
+    }
+
+    function isStaffPortal(userId) {
+      return isOwner(userId) &&
+             (!exists(/databases/$(database)/documents/users/$(userId)) ||
+              get(/databases/$(database)/documents/users/$(userId)).data.portalMode in ['ADMIN', 'TEACHER']);
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // --- ENTITY VALIDATION HELPERS ---
+    function isValidUserProfile(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.portalMode in ['ADMIN', 'TEACHER', 'STUDENT'] &&
+             data.preferredLanguage in ['EN', 'HI'] &&
+             (!('staffCode' in data) || (data.staffCode is string && data.staffCode.size() <= 40)) &&
+             (!('admissionNo' in data) || (data.admissionNo is string && data.admissionNo.size() <= 40)) &&
+             (!('assignedClass' in data) || (data.assignedClass is string && data.assignedClass.size() <= 30)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidStudentRecord(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.admissionNo is string && data.admissionNo.size() >= 1 && data.admissionNo.size() <= 30 &&
+             data.rollNumber is string && data.rollNumber.size() >= 1 && data.rollNumber.size() <= 20 &&
+             data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 80 &&
+             data.fatherName is string && data.fatherName.size() >= 2 && data.fatherName.size() <= 80 &&
+             (!('motherName' in data) || (data.motherName is string && data.motherName.size() <= 80)) &&
+             data.className is string && data.className.size() >= 1 && data.className.size() <= 30 &&
+             data.section is string && data.section.size() >= 1 && data.section.size() <= 10 &&
+             data.gender in ['MALE', 'FEMALE', 'OTHER'] &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 200)) &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 1000)) &&
+             (!('dateOfBirth' in data) || (data.dateOfBirth is string && data.dateOfBirth.size() <= 30)) &&
+             (!('admissionDate' in data) || (data.admissionDate is string && data.admissionDate.size() <= 30)) &&
+             (!('academicSession' in data) || (data.academicSession is string && data.academicSession.size() <= 20)) &&
+             (!('previousSchool' in data) || (data.previousSchool is string && data.previousSchool.size() <= 120)) &&
+             data.monthlyFeeAmount is int && data.monthlyFeeAmount >= 0 && data.monthlyFeeAmount <= 100000 &&
+             data.status in ['ACTIVE', 'INACTIVE'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidFeeStructure(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.className is string && data.className.size() >= 1 && data.className.size() <= 30 &&
+             (!('academicSession' in data) || (data.academicSession is string && data.academicSession.size() >= 4 && data.academicSession.size() <= 20)) &&
+             data.monthlyTuitionFee is int && data.monthlyTuitionFee >= 0 && data.monthlyTuitionFee <= 100000 &&
+             (!('admissionFee' in data) || (data.admissionFee is int && data.admissionFee >= 0 && data.admissionFee <= 100000)) &&
+             data.examFee is int && data.examFee >= 0 && data.examFee <= 100000 &&
+             (!('developmentFee' in data) || (data.developmentFee is int && data.developmentFee >= 0 && data.developmentFee <= 100000)) &&
+             (!('otherCharges' in data) || (data.otherCharges is int && data.otherCharges >= 0 && data.otherCharges <= 100000)) &&
+             (!('lateFee' in data) || (data.lateFee is int && data.lateFee >= 0 && data.lateFee <= 50000)) &&
+             (!('discount' in data) || (data.discount is int && data.discount >= 0 && data.discount <= 100000)) &&
+             data.computerFee is int && data.computerFee >= 0 && data.computerFee <= 100000 &&
+             data.transportFee is int && data.transportFee >= 0 && data.transportFee <= 100000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidFeePayment(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.receiptNo is string && data.receiptNo.size() >= 3 && data.receiptNo.size() <= 40 &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() >= 2 && data.studentName.size() <= 80 &&
+             (!('fatherName' in data) || (data.fatherName is string && data.fatherName.size() <= 80)) &&
+             data.admissionNo is string && data.admissionNo.size() >= 1 && data.admissionNo.size() <= 30 &&
+             data.className is string && data.className.size() >= 1 && data.className.size() <= 30 &&
+             data.academicYear is string && data.academicYear.size() >= 4 && data.academicYear.size() <= 15 &&
+             data.monthIndex is int && data.monthIndex >= 1 && data.monthIndex <= 12 &&
+             data.monthName is string && data.monthName.size() >= 3 && data.monthName.size() <= 20 &&
+             data.tuitionFee is int && data.tuitionFee >= 0 && data.tuitionFee <= 100000 &&
+             data.otherFee is int && data.otherFee >= 0 && data.otherFee <= 100000 &&
+             data.lateFee is int && data.lateFee >= 0 && data.lateFee <= 50000 &&
+             data.discount is int && data.discount >= 0 && data.discount <= 100000 &&
+             (!('previousBalance' in data) || (data.previousBalance is int && data.previousBalance >= 0 && data.previousBalance <= 1000000)) &&
+             data.totalAmount is int && data.totalAmount >= 0 && data.totalAmount <= 500000 &&
+             (!('amountPaid' in data) || (data.amountPaid is int && data.amountPaid >= 0 && data.amountPaid <= 500000)) &&
+             (!('remainingBalance' in data) || (data.remainingBalance is int && data.remainingBalance >= 0 && data.remainingBalance <= 1000000)) &&
+             (!('paymentType' in data) || (data.paymentType in ['FULL', 'PARTIAL'])) &&
+             (!('paymentStatus' in data) || (data.paymentStatus in ['PAID', 'PARTIAL', 'REFUNDED', 'CORRECTED'])) &&
+             data.paymentMode in ['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE'] &&
+             data.paidOnDate is string && data.paidOnDate.size() >= 4 && data.paidOnDate.size() <= 30 &&
+             (!('paidOnIsoDate' in data) || (data.paidOnIsoDate is string && data.paidOnIsoDate.size() <= 20)) &&
+             (!('idempotencyKey' in data) || (data.idempotencyKey is string && data.idempotencyKey.size() <= 80)) &&
+             (!('refundOrCorrectionReason' in data) || (data.refundOrCorrectionReason is string && data.refundOrCorrectionReason.size() <= 200)) &&
+             (!('remarks' in data) || (data.remarks is string && data.remarks.size() <= 200)) &&
+             data.collectedBy is string && data.collectedBy.size() >= 1 && data.collectedBy.size() <= 80 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidFeeMonthLock(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.academicYear is string && data.academicYear.size() >= 4 && data.academicYear.size() <= 15 &&
+             data.monthIndex is int && data.monthIndex >= 1 && data.monthIndex <= 12 &&
+             (!('expectedAmount' in data) || (data.expectedAmount is int && data.expectedAmount >= 0 && data.expectedAmount <= 500000)) &&
+             data.paidAmount is int && data.paidAmount >= 0 && data.paidAmount <= 500000 &&
+             data.isFullyPaid is bool &&
+             (!('lastReceiptNo' in data) || (data.lastReceiptNo is string && data.lastReceiptNo.size() <= 40)) &&
+             (!('lastSubmissionKey' in data) || (data.lastSubmissionKey is string && data.lastSubmissionKey.size() <= 80)) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidFeeMetaCounter(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.lastSeq is int && data.lastSeq >= 0 && data.lastSeq <= 10000000 &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidTeacherRecord(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.staffCode is string && data.staffCode.size() >= 1 && data.staffCode.size() <= 30 &&
+             data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 80 &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 60 &&
+             data.assignedClass is string && data.assignedClass.size() >= 1 && data.assignedClass.size() <= 30 &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20)) &&
+             (!('qualification' in data) || (data.qualification is string && data.qualification.size() <= 60)) &&
+             data.status in ['ACTIVE', 'INACTIVE'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAttendanceRecord(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() >= 2 && data.studentName.size() <= 80 &&
+             data.admissionNo is string && data.admissionNo.size() >= 1 && data.admissionNo.size() <= 30 &&
+             data.className is string && data.className.size() >= 1 && data.className.size() <= 30 &&
+             (!('section' in data) || (data.section is string && data.section.size() >= 1 && data.section.size() <= 10)) &&
+             (!('academicSession' in data) || (data.academicSession is string && data.academicSession.size() >= 4 && data.academicSession.size() <= 20)) &&
+             data.dateKey is string && data.dateKey.size() >= 8 && data.dateKey.size() <= 20 &&
+             data.status in ['PRESENT', 'ABSENT', 'LEAVE'] &&
+             data.markedBy is string && data.markedBy.size() >= 1 && data.markedBy.size() <= 80 &&
+             (!('editedBy' in data) || (data.editedBy is string && data.editedBy.size() <= 80)) &&
+             (!('editReason' in data) || (data.editReason is string && data.editReason.size() <= 200)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidHomeworkItem(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.className is string && data.className.size() >= 1 && data.className.size() <= 30 &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 60 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 600 &&
+             data.dueDate is string && data.dueDate.size() >= 4 && data.dueDate.size() <= 30 &&
+             data.assignedBy is string && data.assignedBy.size() >= 1 && data.assignedBy.size() <= 80 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidExamSchedule(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.examName is string && data.examName.size() >= 2 && data.examName.size() <= 80 &&
+             data.className is string && data.className.size() >= 1 && data.className.size() <= 30 &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 60 &&
+             data.examDate is string && data.examDate.size() >= 4 && data.examDate.size() <= 30 &&
+             data.maxMarks is int && data.maxMarks >= 1 && data.maxMarks <= 1000 &&
+             (!('roomNo' in data) || (data.roomNo is string && data.roomNo.size() <= 30)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidExamResult(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.examId is string && isValidId(data.examId) &&
+             data.examName is string && data.examName.size() >= 2 && data.examName.size() <= 80 &&
+             data.studentId is string && isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() >= 2 && data.studentName.size() <= 80 &&
+             data.admissionNo is string && data.admissionNo.size() >= 1 && data.admissionNo.size() <= 30 &&
+             data.className is string && data.className.size() >= 1 && data.className.size() <= 30 &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 60 &&
+             data.marksObtained is int && data.marksObtained >= 0 && data.marksObtained <= 1000 &&
+             data.maxMarks is int && data.maxMarks >= 1 && data.maxMarks <= 1000 &&
+             data.grade is string && data.grade.size() >= 1 && data.grade.size() <= 10 &&
+             (!('remarks' in data) || (data.remarks is string && data.remarks.size() <= 120)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSchoolNotice(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.body is string && data.body.size() >= 2 && data.body.size() <= 1000 &&
+             data.audience in ['ALL', 'TEACHERS', 'PARENTS'] &&
+             data.priority in ['NORMAL', 'IMPORTANT', 'URGENT'] &&
+             data.publishedDate is string && data.publishedDate.size() >= 4 && data.publishedDate.size() <= 30 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidTimetableEntry(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.className is string && data.className.size() >= 1 && data.className.size() <= 30 &&
+             data.dayOfWeek is string && data.dayOfWeek.size() >= 2 && data.dayOfWeek.size() <= 20 &&
+             data.periodLabel is string && data.periodLabel.size() >= 1 && data.periodLabel.size() <= 40 &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 60 &&
+             data.teacherName is string && data.teacherName.size() >= 1 && data.teacherName.size() <= 80 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSchoolSettings(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.schoolName is string && data.schoolName.size() >= 2 && data.schoolName.size() <= 140 &&
+             data.schoolAddress is string && data.schoolAddress.size() >= 2 && data.schoolAddress.size() <= 200 &&
+             data.academicSession is string && data.academicSession.size() >= 4 && data.academicSession.size() <= 20 &&
+             data.principalName is string && data.principalName.size() >= 1 && data.principalName.size() <= 80 &&
+             (!('contactPhone' in data) || (data.contactPhone is string && data.contactPhone.size() <= 20)) &&
+             data.totalConfiguredClasses is int && data.totalConfiguredClasses >= 1 && data.totalConfiguredClasses <= 30 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // --- COLLECTION RULES ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'portalMode', 'preferredLanguage', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'portalMode', 'preferredLanguage', 'staffCode', 'admissionNo', 'assignedClass', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming(), userId);
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'portalMode', 'preferredLanguage', 'staffCode', 'admissionNo', 'assignedClass', 'updatedAt']);
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      match /students/{studentId} {
+        allow get: if isOwner(userId) && isValidId(studentId);
+        allow list: if isOwner(userId);
+
+        allow create: if isAdminPortal(userId) &&
+                         isValidId(studentId) &&
+                         incoming().keys().hasAll(['userId', 'admissionNo', 'rollNumber', 'fullName', 'fatherName', 'className', 'section', 'gender', 'monthlyFeeAmount', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'admissionNo', 'rollNumber', 'fullName', 'fatherName', 'motherName', 'className', 'section', 'gender', 'phone', 'address', 'photoUrl', 'dateOfBirth', 'admissionDate', 'academicSession', 'previousSchool', 'monthlyFeeAmount', 'status', 'createdAt', 'updatedAt']) &&
+                         isValidStudentRecord(incoming(), userId);
+
+        allow update: if isAdminPortal(userId) &&
+                         isValidId(studentId) &&
+                         isValidStudentRecord(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['admissionNo', 'rollNumber', 'fullName', 'fatherName', 'motherName', 'className', 'section', 'gender', 'phone', 'address', 'photoUrl', 'dateOfBirth', 'admissionDate', 'academicSession', 'previousSchool', 'monthlyFeeAmount', 'status', 'updatedAt']);
+
+        allow delete: if isAdminPortal(userId) && isValidId(studentId);
+      }
+
+      match /feeStructures/{structureId} {
+        allow get: if isOwner(userId) && isValidId(structureId);
+        allow list: if isOwner(userId);
+
+        allow create: if isAdminPortal(userId) &&
+                         isValidId(structureId) &&
+                         incoming().keys().hasAll(['userId', 'className', 'monthlyTuitionFee', 'examFee', 'computerFee', 'transportFee', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'academicSession', 'className', 'monthlyTuitionFee', 'admissionFee', 'examFee', 'developmentFee', 'otherCharges', 'lateFee', 'discount', 'computerFee', 'transportFee', 'createdAt', 'updatedAt']) &&
+                         isValidFeeStructure(incoming(), userId);
+
+        allow update: if isAdminPortal(userId) &&
+                         isValidId(structureId) &&
+                         isValidFeeStructure(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['academicSession', 'className', 'monthlyTuitionFee', 'admissionFee', 'examFee', 'developmentFee', 'otherCharges', 'lateFee', 'discount', 'computerFee', 'transportFee', 'updatedAt']);
+
+        allow delete: if isAdminPortal(userId) && isValidId(structureId);
+      }
+
+      match /feePayments/{paymentId} {
+        allow get: if isOwner(userId) && isValidId(paymentId);
+        allow list: if isOwner(userId);
+
+        allow create: if isAdminPortal(userId) &&
+                         isValidId(paymentId) &&
+                         incoming().keys().hasAll(['userId', 'receiptNo', 'studentId', 'studentName', 'admissionNo', 'className', 'academicYear', 'monthIndex', 'monthName', 'tuitionFee', 'otherFee', 'lateFee', 'discount', 'totalAmount', 'paymentMode', 'paidOnDate', 'collectedBy', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'receiptNo', 'studentId', 'studentName', 'fatherName', 'admissionNo', 'className', 'academicYear', 'monthIndex', 'monthName', 'tuitionFee', 'otherFee', 'lateFee', 'discount', 'previousBalance', 'totalAmount', 'amountPaid', 'remainingBalance', 'paymentType', 'paymentStatus', 'paymentMode', 'paidOnDate', 'paidOnIsoDate', 'idempotencyKey', 'refundOrCorrectionReason', 'remarks', 'collectedBy', 'createdAt', 'updatedAt']) &&
+                         isValidFeePayment(incoming(), userId) &&
+                         exists(/databases/$(database)/documents/users/$(userId)/students/$(incoming().studentId));
+
+        allow update: if isAdminPortal(userId) &&
+                         isValidId(paymentId) &&
+                         isValidFeePayment(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().studentId == existing().studentId &&
+                         incoming().receiptNo == existing().receiptNo &&
+                         incoming().academicYear == existing().academicYear &&
+                         incoming().monthIndex == existing().monthIndex &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['tuitionFee', 'otherFee', 'lateFee', 'discount', 'totalAmount', 'amountPaid', 'remainingBalance', 'paymentType', 'paymentStatus', 'paymentMode', 'paidOnDate', 'paidOnIsoDate', 'refundOrCorrectionReason', 'remarks', 'updatedAt']);
+
+        // Never delete fee payment records to preserve complete audit & transaction history
+        allow delete: if false;
+      }
+
+      match /feeMonthLocks/{lockId} {
+        allow get: if isOwner(userId) && isValidId(lockId);
+        allow list: if isOwner(userId);
+
+        allow create: if isAdminPortal(userId) &&
+                         isValidId(lockId) &&
+                         incoming().keys().hasAll(['userId', 'studentId', 'academicYear', 'monthIndex', 'paidAmount', 'isFullyPaid', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'studentId', 'academicYear', 'monthIndex', 'expectedAmount', 'paidAmount', 'isFullyPaid', 'lastReceiptNo', 'lastSubmissionKey', 'updatedAt']) &&
+                         isValidFeeMonthLock(incoming(), userId) &&
+                         exists(/databases/$(database)/documents/users/$(userId)/students/$(incoming().studentId));
+
+        allow update: if isAdminPortal(userId) &&
+                         isValidId(lockId) &&
+                         isValidFeeMonthLock(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().studentId == existing().studentId &&
+                         incoming().academicYear == existing().academicYear &&
+                         incoming().monthIndex == existing().monthIndex &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['expectedAmount', 'paidAmount', 'isFullyPaid', 'lastReceiptNo', 'lastSubmissionKey', 'updatedAt']);
+
+        allow delete: if false;
+      }
+
+      match /feeMeta/{metaId} {
+        allow get: if isOwner(userId) && isValidId(metaId);
+        allow list: if isOwner(userId);
+
+        allow create: if isAdminPortal(userId) &&
+                         isValidId(metaId) &&
+                         incoming().keys().hasAll(['userId', 'lastSeq', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'lastSeq', 'updatedAt']) &&
+                         isValidFeeMetaCounter(incoming(), userId);
+
+        allow update: if isAdminPortal(userId) &&
+                         isValidId(metaId) &&
+                         isValidFeeMetaCounter(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['lastSeq', 'updatedAt']);
+
+        allow delete: if false;
+      }
+
+      match /teachers/{teacherId} {
+        allow get: if isOwner(userId) && isValidId(teacherId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(teacherId) &&
+                         incoming().keys().hasAll(['userId', 'staffCode', 'fullName', 'subject', 'assignedClass', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'staffCode', 'fullName', 'subject', 'assignedClass', 'phone', 'qualification', 'status', 'createdAt', 'updatedAt']) &&
+                         isValidTeacherRecord(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(teacherId) &&
+                         isValidTeacherRecord(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['staffCode', 'fullName', 'subject', 'assignedClass', 'phone', 'qualification', 'status', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(teacherId);
+      }
+
+      match /attendanceRecords/{recordId} {
+        allow get: if isOwner(userId) && isValidId(recordId);
+        allow list: if isOwner(userId);
+
+        allow create: if isStaffPortal(userId) &&
+                         isValidId(recordId) &&
+                         incoming().keys().hasAll(['userId', 'studentId', 'studentName', 'admissionNo', 'className', 'dateKey', 'status', 'markedBy', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'studentId', 'studentName', 'admissionNo', 'className', 'section', 'academicSession', 'dateKey', 'status', 'markedBy', 'editedBy', 'editReason', 'createdAt', 'updatedAt']) &&
+                         isValidAttendanceRecord(incoming(), userId) &&
+                         exists(/databases/$(database)/documents/users/$(userId)/students/$(incoming().studentId));
+
+        allow update: if isAdminPortal(userId) &&
+                         isValidId(recordId) &&
+                         isValidAttendanceRecord(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().studentId == existing().studentId &&
+                         incoming().dateKey == existing().dateKey &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'markedBy', 'editedBy', 'editReason', 'updatedAt']);
+
+        allow delete: if isAdminPortal(userId) && isValidId(recordId);
+      }
+
+      match /homeworks/{homeworkId} {
+        allow get: if isOwner(userId) && isValidId(homeworkId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(homeworkId) &&
+                         incoming().keys().hasAll(['userId', 'className', 'subject', 'title', 'description', 'dueDate', 'assignedBy', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'className', 'subject', 'title', 'description', 'dueDate', 'assignedBy', 'createdAt', 'updatedAt']) &&
+                         isValidHomeworkItem(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(homeworkId) &&
+                         isValidHomeworkItem(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['className', 'subject', 'title', 'description', 'dueDate', 'assignedBy', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(homeworkId);
+      }
+
+      match /exams/{examId} {
+        allow get: if isOwner(userId) && isValidId(examId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(examId) &&
+                         incoming().keys().hasAll(['userId', 'examName', 'className', 'subject', 'examDate', 'maxMarks', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'examName', 'className', 'subject', 'examDate', 'maxMarks', 'roomNo', 'createdAt', 'updatedAt']) &&
+                         isValidExamSchedule(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(examId) &&
+                         isValidExamSchedule(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['examName', 'className', 'subject', 'examDate', 'maxMarks', 'roomNo', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(examId);
+      }
+
+      match /results/{resultId} {
+        allow get: if isOwner(userId) && isValidId(resultId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(resultId) &&
+                         incoming().keys().hasAll(['userId', 'examId', 'examName', 'studentId', 'studentName', 'admissionNo', 'className', 'subject', 'marksObtained', 'maxMarks', 'grade', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'examId', 'examName', 'studentId', 'studentName', 'admissionNo', 'className', 'subject', 'marksObtained', 'maxMarks', 'grade', 'remarks', 'createdAt', 'updatedAt']) &&
+                         isValidExamResult(incoming(), userId) &&
+                         exists(/databases/$(database)/documents/users/$(userId)/students/$(incoming().studentId));
+
+        allow update: if isOwner(userId) &&
+                         isValidId(resultId) &&
+                         isValidExamResult(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().studentId == existing().studentId &&
+                         incoming().examId == existing().examId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['marksObtained', 'maxMarks', 'grade', 'remarks', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(resultId);
+      }
+
+      match /notices/{noticeId} {
+        allow get: if isOwner(userId) && isValidId(noticeId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(noticeId) &&
+                         incoming().keys().hasAll(['userId', 'title', 'body', 'audience', 'priority', 'publishedDate', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'title', 'body', 'audience', 'priority', 'publishedDate', 'createdAt', 'updatedAt']) &&
+                         isValidSchoolNotice(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(noticeId) &&
+                         isValidSchoolNotice(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['title', 'body', 'audience', 'priority', 'publishedDate', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(noticeId);
+      }
+
+      match /timetable/{entryId} {
+        allow get: if isOwner(userId) && isValidId(entryId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(entryId) &&
+                         incoming().keys().hasAll(['userId', 'className', 'dayOfWeek', 'periodLabel', 'subject', 'teacherName', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'className', 'dayOfWeek', 'periodLabel', 'subject', 'teacherName', 'createdAt', 'updatedAt']) &&
+                         isValidTimetableEntry(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(entryId) &&
+                         isValidTimetableEntry(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['className', 'dayOfWeek', 'periodLabel', 'subject', 'teacherName', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(entryId);
+      }
+
+      match /schoolConfig/{configId} {
+        allow get: if isOwner(userId) && isValidId(configId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(configId) &&
+                         incoming().keys().hasAll(['userId', 'schoolName', 'schoolAddress', 'academicSession', 'principalName', 'totalConfiguredClasses', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'schoolName', 'schoolAddress', 'academicSession', 'principalName', 'contactPhone', 'totalConfiguredClasses', 'createdAt', 'updatedAt']) &&
+                         isValidSchoolSettings(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(configId) &&
+                         isValidSchoolSettings(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['schoolName', 'schoolAddress', 'academicSession', 'principalName', 'contactPhone', 'totalConfiguredClasses', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(configId);
+      }
+    }
+  }
+}

@@ -1,0 +1,340 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user portal profile and language preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "portalMode": { "type": "string", "enum": ["ADMIN", "TEACHER", "STUDENT"] },
+        "preferredLanguage": { "type": "string", "enum": ["EN", "HI"] },
+        "staffCode": { "type": "string" },
+        "admissionNo": { "type": "string" },
+        "assignedClass": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "portalMode", "preferredLanguage", "createdAt", "updatedAt"]
+    },
+    "StudentRecord": {
+      "title": "StudentRecord",
+      "description": "Enrolled student record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "admissionNo": { "type": "string" },
+        "rollNumber": { "type": "string" },
+        "fullName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "motherName": { "type": "string" },
+        "className": { "type": "string" },
+        "section": { "type": "string" },
+        "gender": { "type": "string", "enum": ["MALE", "FEMALE", "OTHER"] },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "dateOfBirth": { "type": "string" },
+        "admissionDate": { "type": "string" },
+        "academicSession": { "type": "string" },
+        "previousSchool": { "type": "string" },
+        "monthlyFeeAmount": { "type": "integer" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "admissionNo", "rollNumber", "fullName", "fatherName", "className", "section", "gender", "monthlyFeeAmount", "status", "createdAt", "updatedAt"]
+    },
+    "FeeStructure": {
+      "title": "FeeStructure",
+      "description": "Session and class-wise monthly and annual fee structure",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "academicSession": { "type": "string" },
+        "className": { "type": "string" },
+        "monthlyTuitionFee": { "type": "integer" },
+        "admissionFee": { "type": "integer" },
+        "examFee": { "type": "integer" },
+        "developmentFee": { "type": "integer" },
+        "otherCharges": { "type": "integer" },
+        "lateFee": { "type": "integer" },
+        "discount": { "type": "integer" },
+        "computerFee": { "type": "integer" },
+        "transportFee": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "className", "monthlyTuitionFee", "examFee", "computerFee", "transportFee", "createdAt", "updatedAt"]
+    },
+    "FeePayment": {
+      "title": "FeePayment",
+      "description": "Immutable fee payment receipt and transaction history record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "receiptNo": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "admissionNo": { "type": "string" },
+        "className": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "monthIndex": { "type": "integer" },
+        "monthName": { "type": "string" },
+        "tuitionFee": { "type": "integer" },
+        "otherFee": { "type": "integer" },
+        "lateFee": { "type": "integer" },
+        "discount": { "type": "integer" },
+        "previousBalance": { "type": "integer" },
+        "totalAmount": { "type": "integer" },
+        "amountPaid": { "type": "integer" },
+        "remainingBalance": { "type": "integer" },
+        "paymentType": { "type": "string", "enum": ["FULL", "PARTIAL"] },
+        "paymentStatus": { "type": "string", "enum": ["PAID", "PARTIAL", "REFUNDED", "CORRECTED"] },
+        "paymentMode": { "type": "string", "enum": ["CASH", "UPI", "BANK_TRANSFER", "CHEQUE"] },
+        "paidOnDate": { "type": "string" },
+        "paidOnIsoDate": { "type": "string" },
+        "idempotencyKey": { "type": "string" },
+        "refundOrCorrectionReason": { "type": "string" },
+        "remarks": { "type": "string" },
+        "collectedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "receiptNo", "studentId", "studentName", "admissionNo", "className", "academicYear", "monthIndex", "monthName", "tuitionFee", "otherFee", "lateFee", "discount", "totalAmount", "paymentMode", "paidOnDate", "collectedBy", "createdAt", "updatedAt"]
+    },
+    "FeeMonthLock": {
+      "title": "FeeMonthLock",
+      "description": "Atomic per-student per-month lock preventing duplicate payments and tracking partial settlement",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "monthIndex": { "type": "integer" },
+        "expectedAmount": { "type": "integer" },
+        "paidAmount": { "type": "integer" },
+        "isFullyPaid": { "type": "boolean" },
+        "lastReceiptNo": { "type": "string" },
+        "lastSubmissionKey": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "studentId", "academicYear", "monthIndex", "paidAmount", "isFullyPaid", "updatedAt"]
+    },
+    "FeeMetaCounter": {
+      "title": "FeeMetaCounter",
+      "description": "Atomic receipt sequence counter for unique receipt number generation",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "lastSeq": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "lastSeq", "updatedAt"]
+    },
+    "TeacherRecord": {
+      "title": "TeacherRecord",
+      "description": "School faculty member record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "staffCode": { "type": "string" },
+        "fullName": { "type": "string" },
+        "subject": { "type": "string" },
+        "assignedClass": { "type": "string" },
+        "phone": { "type": "string" },
+        "qualification": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "staffCode", "fullName", "subject", "assignedClass", "status", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Daily student attendance entry with section, session, and admin edit audit metadata",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "admissionNo": { "type": "string" },
+        "className": { "type": "string" },
+        "section": { "type": "string" },
+        "academicSession": { "type": "string" },
+        "dateKey": { "type": "string" },
+        "status": { "type": "string", "enum": ["PRESENT", "ABSENT", "LEAVE"] },
+        "markedBy": { "type": "string" },
+        "editedBy": { "type": "string" },
+        "editReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "studentId", "studentName", "admissionNo", "className", "dateKey", "status", "markedBy", "createdAt", "updatedAt"]
+    },
+    "HomeworkItem": {
+      "title": "HomeworkItem",
+      "description": "Class homework assignment",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "className": { "type": "string" },
+        "subject": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "assignedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "className", "subject", "title", "description", "dueDate", "assignedBy", "createdAt", "updatedAt"]
+    },
+    "ExamSchedule": {
+      "title": "ExamSchedule",
+      "description": "Scheduled school examination",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "examName": { "type": "string" },
+        "className": { "type": "string" },
+        "subject": { "type": "string" },
+        "examDate": { "type": "string" },
+        "maxMarks": { "type": "integer" },
+        "roomNo": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "examName", "className", "subject", "examDate", "maxMarks", "createdAt", "updatedAt"]
+    },
+    "ExamResult": {
+      "title": "ExamResult",
+      "description": "Student exam marks and grade result",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "examId": { "type": "string" },
+        "examName": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "admissionNo": { "type": "string" },
+        "className": { "type": "string" },
+        "subject": { "type": "string" },
+        "marksObtained": { "type": "integer" },
+        "maxMarks": { "type": "integer" },
+        "grade": { "type": "string" },
+        "remarks": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "examId", "examName", "studentId", "studentName", "admissionNo", "className", "subject", "marksObtained", "maxMarks", "grade", "createdAt", "updatedAt"]
+    },
+    "SchoolNotice": {
+      "title": "SchoolNotice",
+      "description": "Official notice board circular",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "audience": { "type": "string", "enum": ["ALL", "TEACHERS", "PARENTS"] },
+        "priority": { "type": "string", "enum": ["NORMAL", "IMPORTANT", "URGENT"] },
+        "publishedDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "body", "audience", "priority", "publishedDate", "createdAt", "updatedAt"]
+    },
+    "TimetableEntry": {
+      "title": "TimetableEntry",
+      "description": "Class weekly timetable period",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "className": { "type": "string" },
+        "dayOfWeek": { "type": "string" },
+        "periodLabel": { "type": "string" },
+        "subject": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "className", "dayOfWeek", "periodLabel", "subject", "teacherName", "createdAt", "updatedAt"]
+    },
+    "SchoolSettings": {
+      "title": "SchoolSettings",
+      "description": "School administration configuration",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "schoolName": { "type": "string" },
+        "schoolAddress": { "type": "string" },
+        "academicSession": { "type": "string" },
+        "principalName": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "totalConfiguredClasses": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "schoolName", "schoolAddress", "academicSession", "principalName", "totalConfiguredClasses", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User portal profile"
+    },
+    "/users/{userId}/students/{studentId}": {
+      "schema": { "$ref": "#/entities/StudentRecord" },
+      "description": "Enrolled students"
+    },
+    "/users/{userId}/feeStructures/{structureId}": {
+      "schema": { "$ref": "#/entities/FeeStructure" },
+      "description": "Class fee structures"
+    },
+    "/users/{userId}/feePayments/{paymentId}": {
+      "schema": { "$ref": "#/entities/FeePayment" },
+      "description": "Monthly fee receipts"
+    },
+    "/users/{userId}/feeMonthLocks/{lockId}": {
+      "schema": { "$ref": "#/entities/FeeMonthLock" },
+      "description": "Per-student monthly payment lock and running paid state"
+    },
+    "/users/{userId}/feeMeta/{metaId}": {
+      "schema": { "$ref": "#/entities/FeeMetaCounter" },
+      "description": "Atomic receipt numbering sequence"
+    },
+    "/users/{userId}/teachers/{teacherId}": {
+      "schema": { "$ref": "#/entities/TeacherRecord" },
+      "description": "Faculty & teachers"
+    },
+    "/users/{userId}/attendanceRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Daily attendance records"
+    },
+    "/users/{userId}/homeworks/{homeworkId}": {
+      "schema": { "$ref": "#/entities/HomeworkItem" },
+      "description": "Class homework assignments"
+    },
+    "/users/{userId}/exams/{examId}": {
+      "schema": { "$ref": "#/entities/ExamSchedule" },
+      "description": "Examination schedules"
+    },
+    "/users/{userId}/results/{resultId}": {
+      "schema": { "$ref": "#/entities/ExamResult" },
+      "description": "Examination marks & results"
+    },
+    "/users/{userId}/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/SchoolNotice" },
+      "description": "Notice board announcements"
+    },
+    "/users/{userId}/timetable/{entryId}": {
+      "schema": { "$ref": "#/entities/TimetableEntry" },
+      "description": "Class timetable entries"
+    },
+    "/users/{userId}/schoolConfig/{configId}": {
+      "schema": { "$ref": "#/entities/SchoolSettings" },
+      "description": "School settings configuration"
+    }
+  }
+}
